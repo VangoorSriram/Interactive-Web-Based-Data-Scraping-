@@ -1,12 +1,7 @@
-import mysql.connector
-
-db_config = {
-    "host": "localhost",
-    "user": "root",
-    "password": "yourpassword",
-    "database": "web_scraper_db"
-}
-
-def get_db_connection():
-    return mysql.connector.connect(**db_config)
-
+def store_scheduled_data(url, element, data):
+    """Stores scheduled scraping results."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO scheduled_scrapes (url, element, data) VALUES (%s, %s, %s)", (url, element, str(data)))
+    conn.commit()
+    conn.close()
