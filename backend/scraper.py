@@ -1,23 +1,26 @@
-import requests
+import asyncio
+import aiohttp
 from bs4 import BeautifulSoup
 
-def scrape_website(url, element="p"):
-    """Scrapes a static webpage and extracts data based on the provided element."""
-    try:
-        response = requests.get(url, timeout=5)  # Fetch webpage
-        response.raise_for_status()  # Raise error for HTTP failures
-        soup = BeautifulSoup(response.content, "html.parser")
+async def fetch(url, session):
+    """Asynchronously fetch a webpage."""
+    async with session.get(url) as response:
+        return await response.text()
 
-        # Extract text content
-        if element == "img":
-            extracted_data = [img["src"] for img in soup.find_all("img") if "src" in img.attrs][:10]
-        elif element == "table":
-            tables = soup.find_all("table")[:1]  # Extract first table
-            extracted_data = [str(table) for table in tables]  # Convert tables to HTML
-        else:
+async def scrape_website_async(urls, element="p"):
+    """Scrape multiple webpages asynchronously."""
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch(url, session) for url in urls]
+        responses = await asyncio.gather(*tasks)
+
+        results = []
+        for url, html in zip(urls, responses):
+            soup = BeautifulSoup(html, "html.parser")
             extracted_data = [tag.get_text(strip=True) for tag in soup.find_all(element)][:10]
+            results.append({"url": url, "data": extracted_data})
 
-        return extracted_data
+        return results
 
-    except Exception as e:
-        return {"error": str(e)}
+def scrape_website(urls, element="p"):
+    """Wrapper function for async scraping."""
+    return asyncio.run(scrape_website_async(urls, element))
