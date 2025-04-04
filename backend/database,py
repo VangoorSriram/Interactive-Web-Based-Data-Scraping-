@@ -1,7 +1,147 @@
-def store_scheduled_data(url, element, data):
-    """Stores scheduled scraping results."""
+import mysql.connector
+from datetime import datetime, timedelta
+
+
+db_config = {
+    "host": "localhost",
+    "user": "root",
+    "password": "Saikumar@2105",
+    "database": "web_scraper_db"
+}
+
+def get_db_connection():
+    return mysql.connector.connect(**db_config)
+
+def create_tables():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO scheduled_scrapes (url, element, data) VALUES (%s, %s, %s)", (url, element, str(data)))
+    try:
+            # Create users table first
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Then create scraped_data table with foreign key
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scraped_data (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT,
+                url TEXT NOT NULL,
+                element VARCHAR(50) NOT NULL,
+                status VARCHAR(20) DEFAULT 'success',
+                content LONGTEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                INDEX idx_url (url(255)),
+                INDEX idx_element (element)
+            )
+            """)
+            
+            # Finally create scheduled_tasks table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id VARCHAR(255) PRIMARY KEY,
+                user_id INT,
+                url TEXT NOT NULL,
+                interval_type VARCHAR(20) NOT NULL,
+                next_run TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                INDEX idx_interval (interval_type)
+            )
+            """)
+            
+            conn.commit()
+    except Exception as e:
+            print(f"Error creating tables: {e}")
+            conn.rollback()
+    finally:
+            conn.close()
+
+def insert_data(url, content, element):
+    conn =  get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO scraped_data (url, content, element) VALUES (%s, %s,%s)", (url, content, element))
     conn.commit()
     conn.close()
+
+def fetch_data():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scraped_data ORDER BY timestamp DESC LIMIT 10")
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
+
+def store_scraped_data(url, data, element):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO scraped_data (url, data, element) VALUES (%s, %s,%s)", (url, str(data), element))
+        conn.commit()
+    except Exception as e:
+        print(f"Error inserting data : {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+def fetch_scraped_data():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM scraped_data")
+    data = cursor.fetchall()
+    conn.close()
+    return data
+#optimized query methods
+def get_scraped_data_by_user(user_id, limit=10):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+    SELECT * FROM scraped_data 
+    WHERE user_id = %s AND created_at >=%s
+    ORDER BY timestamp DESC 
+    LIMIT %s
+    """, (user_id, datetime.now() - timedelta(days=days)))
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
+def add_status_column():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        ALTER TABLE scraped_data 
+        ADD COLUMN status VARCHAR(20) DEFAULT 'success'
+        """)
+        conn.commit()
+        print("Status column added successfully")
+    except Exception as e:
+        print(f"Error adding status column: {e}")
+    finally:
+        conn.close()
+
+def update_existing_records_status():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        UPDATE scraped_data 
+        SET status = CASE 
+            WHEN content IS NOT NULL AND content != '' THEN 'success'
+            ELSE 'failed'
+        END
+        WHERE status IS NULL
+        """)
+        conn.commit()
+        print("Existing records updated with status")
+    except Exception as e:
+        print(f"Error updating records: {e}")
+    finally:
+        conn.close()
+
