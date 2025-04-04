@@ -1,73 +1,71 @@
+
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, LinearScale, CategoryScale, BarElement, Legend, Tooltip } from 'chart.js';
+import { fetchData } from '../api/api';
+import { Link } from 'react-router-dom';
+import { SuccessIcon, ElementIcon, ScraperIcon } from './icons';
 
-// Register ChartJS components
+
 ChartJS.register(LinearScale, CategoryScale, BarElement, Legend, Tooltip);
 
-function Dashboard() {
-    const [data, setData] = useState([]);
+export default function DashboardMain() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        axios.get('http://127.0.0.1:5000/data')
-            .then(response => {
-                if (response.data.success && Array.isArray(response.data.data)) {
-                    setData(response.data.data);
-                } else {
-                    console.error("Invalid data format:", response.data);
-                }
-            })
-            .catch(error => console.error("Error fetching data:", error));
-    }, []);
-
-    if (!Array.isArray(data) || data.length === 0) {
-        return <div>No data available. Please scrape some data first.</div>;
-    }
-
-    // Chart Data for Grouped Bar Chart
-    const chartData = {
-        labels: data.map(entry => entry.url),
-        datasets: [
-            {
-                label: 'Positive Words',
-                data: data.map(entry => entry.positive_words),
-                backgroundColor: 'rgba(75, 192, 192, 0.6)',
-            },
-            {
-                label: 'Negative Words',
-                data: data.map(entry => entry.negative_words),
-                backgroundColor: 'rgba(255, 99, 132, 0.6)',
-            },
-        ],
+  useEffect(() => {
+    const fetchScrapedData = async () => {
+      setLoading(true);
+      try {
+        const response = await fetchData();
+        if (response.data?.success) {
+          setData(response.data.data || []);
+        }
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchScrapedData();
+  }, []);
 
-    return (
-        <div>
-            <h2>Grouped Bar Chart - Positive vs. Negative Words</h2>
-            <div className="chart-container">
-                <Bar
-                    data={chartData}
-                    options={{
-                        responsive: true,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: "Word Count" }
-                            },
-                            x: {
-                                title: { display: true, text: "Scraped URLs" }
-                            }
-                        },
-                        plugins: {
-                            legend: { position: 'top' },
-                            tooltip: { enabled: true },
-                        },
-                    }}
-                />
-            </div>
-        </div>
-    );
+  const chartData = {
+    labels: data.map(entry => entry.url.slice(0, 30) + (entry.url.length > 30 ? '...' : '')),
+    datasets: [{
+      label: 'Content Length',
+      data: data.map(entry => entry.content?.length || 0),
+      backgroundColor: 'rgba(75, 192, 192, 0.6)'
+    }]
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <h2 className="text-2xl font-bold mb-8 text-center">Content Length by URL</h2>
+      <div className="bg-white p-4 rounded-lg shadow">
+        {loading ? (
+          <div className="text-center py-8">Loading...</div>
+        ) : (
+          <Bar
+            data={chartData}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: { y: { beginAtZero: true } }
+            }}
+            height={400}
+          />
+        )}
+      </div>
+      <div className="action-buttons">
+    <Link to="/success-rate" className="action-button btn-primary">
+        <SuccessIcon /> Success Rate
+    </Link>
+    <Link to="/element-distribution" className="action-button btn-success">
+        <ElementIcon /> Element Distribution
+    </Link>
+    <Link to="/" className="action-button btn-secondary">
+        <ScraperIcon /> Back to Scraper
+    </Link>
+</div>
+    </div>
+  );
 }
-
-export default Dashboard;
